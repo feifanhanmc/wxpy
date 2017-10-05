@@ -1,17 +1,19 @@
 #-*- coding: utf-8 -*-
 from wxpy import *
 import os
-import sys
 import json
 import random
 import time
+import uuid
 import socket
 import threading
 from multiprocessing import Process
 from wx_xnr_es import WX_XNR_ES
+from qiniu import Auth, put_file, etag, urlsafe_base64_encode
 
 WX_XNR_Bot = {}
 config = {}
+qiniu = None
 
 def load_config():
     with open('wx_xnr_conf.json', 'r') as f:
@@ -36,9 +38,6 @@ def load_group_members(bot_id, puid):
     data = []
     for member in ensure_one(WX_XNR_Bot[bot_id].search(puid=puid)).members:
         data.append((member.puid, member.name))
-    print len(data)
-    print sys.getsizeof(data)   #3312, 而实际上通过print conn.send(result)发现发送的实际大小是24832
-    # return 'True'
     return data
 
 def push_msg_by_puid(bot_id, puid, m):
@@ -52,7 +51,7 @@ def push_msg_by_puid(bot_id, puid, m):
 
 def tcplink(conn, addr):
     print 'Accept new connection from %s:%s...'  % addr
-    data = conn.recv(config['buffer_size'])
+    data = conn.recv(config['socket_buffer_size'])
     result = None
     if data:
         data = json.loads(data)
@@ -64,11 +63,7 @@ def tcplink(conn, addr):
         elif opt == 'loadgroupmembers':
             result = load_group_members(bot_id=data['bot_id'], puid=data['group_puid'])
         #发送结果给客户端
-        print sys.getsizeof(result)
-        print sys.getsizeof(result)/config['buffer_size'] + 1
-        # for i in range()
-        print conn.send(json.dumps(result))
-        # conn.send(json.dumps('True'))
+        conn.send(json.dumps(result))
     conn.close()  
     print 'Connection from %s:%s closed.' % addr
     
@@ -94,11 +89,32 @@ def save_msg(msg, bot, es_groupmsg):
     if msg.is_at:
         time.sleep(random.random())
         msg.reply(u'知道啦~')
+    if msg.type == 'Picture':
+        data = d
+        data['msg_type'] = 'Picture'
+        data['timestamp'] = msg.raw['CreateTime']
+        data['speaker_id'] = msg.member.puid
+        data['speaker_name'] = msg.member.name
+        #save picture
+        filename = str(msg.id) + '.png'
+        filepath = os.path.join('temp', filename)
+        msg.get_file(filepath)
+        #upload picture to qiniu.com
+        try:
+            token = qiniu.upload_token(config['qiniu_bucket_name'], filename, 3600)
+            ret, info = put_file(token, filename, filepath,)
+            data['text'] = config['qiniu_bucket_domain'] + '/' + filename
+            es_groupmsg.save_data(doc_type=es_groupmsg.doc_type, data=data)  
+            os.remove(filepath)
+        except Exception,e:
+            print e
 
 def main():
     global config
+    global qiniu
     config = load_config()
     es_groupmsg = init_es()
+    qiniu = Auth(config['qiniu_access_key'], config['qiniu_secret_key'])
     for i in range(config['bot_num']):
         bot_id = 'bot_' + str(i+1)
         print 'starting %s ...' % bot_id

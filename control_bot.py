@@ -17,7 +17,7 @@ def send_command(command):
         client.send(json.dumps(command))
         buf = []
         while True:
-            d = client.recv(config['buffer_size'])
+            d = client.recv(config['socket_buffer_size'])
             if d:
                 buf.append(d)
             else:
