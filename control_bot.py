@@ -10,7 +10,6 @@ def load_config():
 config = load_config()
 
 def send_command(command):
-    END = config['END']
     try:
         client = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         client.connect((config['socket_host'], config['socket_port']))
@@ -48,7 +47,11 @@ def load_groups(bot_id):
 def load_group_members(bot_id, group_puid):
     command = {'opt': 'loadgroupmembers', 'bot_id': bot_id, 'group_puid': group_puid}
     return send_command(command)
-    
+
+def restart_bot(bot_id):
+    command = {'opt': 'restartbot', 'bot_id': bot_id}
+    return send_command(command)
+
 if __name__ == '__main__':
     #opt: pushmsgbypuid loaduser loadgroupmembers loadgroups
     
@@ -60,7 +63,10 @@ if __name__ == '__main__':
     # print push_msg_by_puid(bot_id='bot_1', to_group_puid='6d9972ab', m='测试一下')
 
     #test load_group_members
-    for d in  load_group_members(bot_id='bot_1', group_puid='1116ae91'):
-        print d[0], d[1]
+    # for d in  load_group_members(bot_id='bot_1', group_puid='1116ae91'):
+    #     print d[0], d[1]
+
+    #test restart_bot
+    print restart_bot('bot_1')
     
 
