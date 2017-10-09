@@ -47,11 +47,25 @@ class MyBot(Bot):
         @self.register(Group)
         def proc_group_msg(msg):
             self.save_msg(msg)
-
+            
     def enable_logger(self, group_name):
         group_receiver = ensure_one(self.groups(update=True).search(group_name))
         self.logger = get_wechat_logger(group_receiver)
-    
+
+    def save_sent_msg(self, m, to_puid, to_name):
+        data = {
+            'msg_type': m.type,
+            'text': m.text,
+            'timestamp': int(time.mktime(m.create_time.timetuple())),
+            'xnr_id': self.self.puid, 
+            'xnr_name': self.self.name, 
+            'group_id': to_puid, 
+            'group_name': to_name,
+            'speaker_id': self.self.puid, 
+            'speaker_name': self.self.name
+        }
+        self.es_groupmsg.save_data(doc_type=self.es_groupmsg.doc_type, data=data)
+
     def save_msg(self, msg):
         d = {'xnr_id': self.self.puid, 'xnr_name': self.self.name, 'group_id': msg.sender.puid, 'group_name': msg.sender.name}
         if msg.type == 'Text':
@@ -82,9 +96,10 @@ class MyBot(Bot):
             except Exception,e:
                 print e
         #注册多个bot时，艾特功能不好使
-        # if msg.is_at:
-        #     time.sleep(random.random())
-        #     msg.reply(u'知道啦~')
+        if msg.is_at:
+            time.sleep(random.random())
+            m = msg.reply(u'知道啦~')
+            self.save_sent_msg(m=m, to_puid=msg.sender.puid, to_name=msg.sender.name)
 
 def load_config():
     with open('wx_xnr_conf.json', 'r') as f:
@@ -111,14 +126,17 @@ def load_group_members(bot_id, puid):
         data.append((member.puid, member.name))
     return data
 
-def push_msg_by_puid(bot_id, puid, m):
+def push_msg_by_puid(bot_id, puid, msg):
     try:
-        ensure_one(WX_XNR_Bot[bot_id].search(puid=puid)).send(m)
+        bot = WX_XNR_Bot[bot_id]
+        u = ensure_one(bot.search(puid=puid))
+        m = u.send(msg)
+        #save sent msg
+        bot.save_sent_msg(m=m, to_puid=u.puid, to_name=u.name)
         return 'true'
     except Exception,e:
         print e
         return 'false'
-    #save sent msg?
 
 def restart_bot(bot_id):
     try:
@@ -142,7 +160,7 @@ def tcplink(conn, addr):
         if opt == 'loadgroups':
             result = load_groups(data['bot_id'])
         elif opt == 'pushmsgbypuid':
-            result = push_msg_by_puid(bot_id=data['bot_id'], puid=data['to_group_puid'], m=data['m'])
+            result = push_msg_by_puid(bot_id=data['bot_id'], puid=data['to_group_puid'], msg=data['m'])
         elif opt == 'loadgroupmembers':
             result = load_group_members(bot_id=data['bot_id'], puid=data['group_puid'])
         elif opt == 'restartbot':
@@ -176,10 +194,9 @@ def main():
         #使用微信群监管wxbot状况
         bot.enable_logger(u'微信虚拟人状况监管群')
         WX_XNR_Bot[bot_id] = bot
-
     #开启所有的wxbot之后，主进程监听有没有要主动发送消息的任务
     print 'ready to publish messages ...'
-    control_bot()  
+    control_bot() 
 
 if __name__ == '__main__':
     main()
