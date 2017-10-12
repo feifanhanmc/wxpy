@@ -60,13 +60,13 @@ if __name__ == '__main__':
     #     print d[0], d[1]
 
     #test push_msg_by_puid
-    print push_msg_by_puid(bot_id='bot_1', to_group_puid='025abe43', m='测试一下')
+    # print push_msg_by_puid(bot_id='bot_1', to_group_puid='025abe43', m='测试一下')
 
     #test load_group_members
     # for d in  load_group_members(bot_id='bot_1', group_puid='1116ae91'):
     #     print d[0], d[1]
 
     #test restart_bot
-    # print restart_bot('bot_1')
+    print restart_bot('bot_1')
     
 

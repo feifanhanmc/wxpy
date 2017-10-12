@@ -17,37 +17,57 @@ es_groupmsg = None
 
 class MyBot(Bot):
     #继承Bot()，以便加入更多属性
-    def __init__(self, bot_id, temp_path, es_groupmsg, if_enable_puid=None, if_cache_path=None, console_qr=False, qr_path=None, qr_callback=None, login_callback=None, logout_callback=None):
+    def __init__(self, bot_id, temp_path, data_path, es_groupmsg, if_enable_puid=None, if_cache_path=None, console_qr=False, qr_path=None, if_qr_callback=None, login_callback=None, logout_callback=None):
         self.bot_id = bot_id
         self.temp_path = temp_path
+        self.data_path = data_path
         self.es_groupmsg = es_groupmsg
         self.if_enable_puid = if_enable_puid
         self.if_cache_path = if_cache_path
         self.console_qr = console_qr
         self.qr_path = qr_path
-        self.qr_callback = qr_callback
+        self.if_qr_callback = if_qr_callback
         self.login_callback = login_callback
         self.logout_callback = logout_callback
-        
+        self.qr_callback = None
+
         self.logger = None  #负责将相关信息发送到微信监管群中
         
         if self.if_cache_path:
-            self.cache_path = os.path.join(self.temp_path, self.bot_id + '.pkl')
+            self.cache_path = os.path.join(self.data_path, self.bot_id + '.pkl')
+        if self.if_qr_callback:
+            self.qr_path = os.path.join(self.temp_path, self.bot_id + '_qrcode.png')
+            self.qr_callback = self.my_qr_callback
+        #在控制台显示二维码进行登陆和将二维码图片保存到本地再使用其他方式进行扫描登陆只能选择其一
+        if self.console_qr and self.if_qr_callback:
+            print '控制台显示二维码和保存二维码图片只能选择其一'
+            self.qr_path = None
+            self.qr_callback = None
+
         #启动wxbot
         try:
+            #如果开启了缓存登陆，则先使用缓存登陆
             Bot.__init__(self, self.cache_path, self.console_qr, self.qr_path, self.qr_callback, self.login_callback, self.logout_callback)
         except Exception,e :
             print e
             os.remove(self.cache_path)
+            #如果缓存登陆失败，则。。。。
             Bot.__init__(self, self.cache_path, self.console_qr, self.qr_path, self.qr_callback, self.login_callback, self.logout_callback)
         #启用puid
         if self.if_enable_puid:
-            self.enable_puid(os.path.join(self.temp_path, self.bot_id + '_puid.pkl'))
+            self.enable_puid(os.path.join(self.data_path, self.bot_id + '_puid.pkl'))
 
         @self.register(Group)
         def proc_group_msg(msg):
             self.save_msg(msg)
-            
+        
+        print self.self.puid
+        
+    def my_qr_callback(self, **kwargs):
+        with open(self.qr_path, 'wb') as fp:
+            fp.write(kwargs['qrcode'])
+        #可以将二维码图片发送到邮箱之类的……
+
     def enable_logger(self, group_name):
         group_receiver = ensure_one(self.groups(update=True).search(group_name))
         self.logger = get_wechat_logger(group_receiver)
@@ -84,7 +104,7 @@ class MyBot(Bot):
             data['speaker_name'] = msg.member.name
             #save picture
             filename = str(msg.id) + '.png'
-            filepath = os.path.join('temp', filename)
+            filepath = os.path.join(self.temp_path, filename)
             msg.get_file(filepath)
             #upload picture to qiniu.com
             try:
@@ -142,7 +162,10 @@ def restart_bot(bot_id):
     try:
         bot = WX_XNR_Bot[bot_id]
         bot.logout()
-        bot = MyBot(bot_id=bot_id, temp_path=config['temp_path'], es_groupmsg=es_groupmsg, if_enable_puid=True, console_qr=True, if_cache_path=True)
+    except:
+        pass
+    try:
+        bot = MyBot(bot_id=bot_id, temp_path=config['temp_path'], data_path=config['data_path'], es_groupmsg=es_groupmsg, if_enable_puid=True, if_cache_path=True, console_qr=True, if_qr_callback=None)
         bot.enable_logger(u'微信虚拟人状况监管群')
         WX_XNR_Bot[bot_id] = bot
         return 'true'
@@ -186,11 +209,12 @@ def main():
     config = load_config()
     es_groupmsg = init_es()
     temp_path = config['temp_path']
+    data_path = config['data_path']
     qiniu = Auth(config['qiniu_access_key'], config['qiniu_secret_key'])
     for i in range(config['bot_num']):
         bot_id = 'bot_' + str(i+1)
         print 'starting %s ...' % bot_id
-        bot = MyBot(bot_id=bot_id, temp_path=temp_path, es_groupmsg=es_groupmsg, if_enable_puid=True, console_qr=True, if_cache_path=True)
+        bot = MyBot(bot_id=bot_id, temp_path=temp_path, data_path=data_path, es_groupmsg=es_groupmsg, if_enable_puid=True, if_cache_path=True, console_qr=True, if_qr_callback=None)
         #使用微信群监管wxbot状况
         bot.enable_logger(u'微信虚拟人状况监管群')
         WX_XNR_Bot[bot_id] = bot
